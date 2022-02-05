@@ -4,7 +4,7 @@
 		return
 			strlen($buffer)===4 &&
 			$buffer[0]==="\xFF" &&
-			$buffer[1]==="\xFB";
+			($buffer[1]==="\xFB" || $buffer[1]==="\xFA");
 	}
 	//Decodes an MP3 header
 	//Note: Decodes only bits necessary for editing and size computation
