@@ -18,7 +18,7 @@
 		echo '<!DOCTYPE html><h1>HTTP 500 - Internal server error</h1>' . he($msg);
 		die(500);
 	}
-	
+
 	//Provides a short function name to HTML encode
 	function he($x){
 		return htmlspecialchars($x,ENT_HTML5|ENT_SUBSTITUTE);

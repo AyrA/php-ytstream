@@ -1,32 +1,27 @@
 <?php
-	require('config.php');
+	//Renders the example configuration file if the system is not configured
+	if(FALSE===@include('config.php')){
+		header('HTTP/1.1 500 Internal Server Error');
+		if(is_file('config.example.php')){
+			echo '<h1>Example configuration</h1>';
+			highlight_file('config.example.php');
+		}
+		else{
+			echo 'Configuration file missing and no example file available. Check readme file for instructions';
+		}
+		die(0);
+	}
 	//Include dependencies after the configuration
 	foreach(glob(__DIR__ . DIRECTORY_SEPARATOR . 'include.*.php') as $f){
 		require($f);
 	}
 
+	//Sanity checks
 	initCache();
 	is_file(YTDL) or http500(YTDL . ' does not exist');
 	is_file(FFMPEG) or http500(FFMPEG . ' does not exist');
 
-	$id=av($_GET,'id');
-	$httpMethod=strtoupper(av($_SERVER,'REQUEST_METHOD'));
-
-	if(!isYtId($id)){
-		http400(($id?'Invalid':'No') . ' youtube Id supplied');
-	}
-
-	set_time_limit(10);
-
-	if($httpMethod==='HEAD'){
-		debuglog("HEAD id=$id");
-		setAudioHeader();
-		die(0);
-	}
-	else if($httpMethod!=='GET'){
-		http400('This supports only GET');
-	}
-
+	//Writes a message to the debug log if debug logging is enabled
 	function debuglog($x){
 		if(defined('DEBUG') && constant('DEBUG')===TRUE){
 			$line="[" . gmdate('Y-m-d H:i:s') . "]:\t";
@@ -59,14 +54,17 @@
 		debuglog("Convert to MP3: id=$id");
 		$mp3=getMp3file($id);
 		//Use cached copy if available
-		if(is_file($mp3)){
+		if(USE_CACHE && is_file($mp3)){
 			if($fp=fopen($mp3,'rb')){
 				strip($fp,$outputStream,NULL,$ranges);
 				fclose($fp);
 			}
 			http500("Cannot open $mp3");
 		}
-		if($cache=fopen($mp3,'wb')){
+		elseif(!USE_CACHE){
+			$cache=NULL;
+		}
+		if(!USE_CACHE || ($cache=fopen($mp3,'wb'))){
 			$exec=realpath(FFMPEG) . ' -i "' . $sourceURL . '" -ab 192000 -vn -ar 44100 -acodec mp3 -f mp3 -y pipe:1';
 			if($proc=popen($exec,'rb')){
 				strip($proc,$outputStream,$cache,$ranges);
@@ -77,7 +75,8 @@
 		}
 		http500("Failed to write to $mp3");
 	}
-	
+
+	//Sends DLNA headers for MP3 streaming
 	function setAudioHeader(){
 		header('Content-Type: audio/mpeg');
 		header('transferMode.dlna.org: Streaming');
@@ -88,7 +87,7 @@
 	function getAndCut($id){
 		$videourl="https://www.youtube.com/watch?v=$id";
 		$mp3=getMp3file($id);
-		if(is_file($mp3)){
+		if(USE_CACHE && is_file($mp3)){
 			debuglog("Using cached file for id=$id");
 			if($fp=fopen($mp3,'rb')){
 				if($out=fopen('php://output','wb')){
@@ -125,6 +124,96 @@
 		http500('Failed to open STDOUT');
 	}
 
-	debuglog("GET id=$id");
-	getAndCut($id);
-	http500();
+	//Grab request properties we need
+	$id=av($_GET,'id');
+	$httpMethod=strtoupper(av($_SERVER,'REQUEST_METHOD'));
+
+	if(isYtId($id)){
+		//Avoid the expensive processing steps for HEAD requests
+		//and just send the appropriate headers instead.
+		if($httpMethod==='HEAD'){
+			debuglog("HEAD id=$id");
+			setAudioHeader();
+			die(0);
+		}
+		else if($httpMethod!=='GET'){
+			http400('This supports only GET');
+		}
+
+		debuglog("GET id=$id");
+		getAndCut($id);
+		//It should not be possible to get to here
+		http500();
+	}
+	elseif($id){
+		http400('Invalid youtube Id format');
+	}
+	//If we're here, no parameter has been specified and we render a simple web page
+
+	//Set charset
+	header('Content-Type: text/html;charset=utf-8');
+	//Pretend IE still matters
+	header('X-UA-Compatible: IE=edge');
+	//Create self-referential URL. If this doesn't works for your server,
+	//you can hardcode it here
+	$self=
+		//Detect HTTPS
+		'http' . (strtoupper(av($_SERVER,'HTTPS'))==='ON'?'s':'') . '://' .
+		//Detect host name
+		av($_SERVER,'SERVER_NAME') .
+		//Detect path
+		av($_SERVER,'REQUEST_URI',av($_SERVER,'SCRIPT_NAME'));
+?><!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>PHP Youtube Stream Library</title>
+		<style>
+			body{margin:auto;max-width:800px;font-family:Sans-Serif}
+		</style>
+		<!-- Pretend a webradio stream platform cares about mobile users -->
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+	</head>
+	<body>
+		<h1>PHP Youtube Stream Library</h1>
+		<p>
+			This system allows you to directly stream Youtube videos to MP3.
+			It has a few features that separate it from other systems.
+			Options marked with an asterisk may be disabled by the application operator.
+		</p>
+		<ul>
+			<li>
+				The audio stream is delivered while being downloaded.
+				No need to wait for it to finish on the server.
+			</li>
+			<li>
+				Sends additional HTTP headers that allow streaming on DLNA devices.
+			</li>
+			<li>
+				* Once streamed, the stream stays available,
+				even if the original video is deleted.
+			</li>
+			<li>
+				* Removal of non-music sections.
+				This application uses SponsorBlock to reliably remove non-music sections from music videos.
+			</li>
+		</ul>
+		<p>
+			How to use:<br />
+			Copy the watch id from any youtube video and add it as id argument to this URL.<br />
+			Example:<br />
+			YT: <code>https://www.youtube.com/watch?v=<b>dQw4w9WgXcQ</b></code><br />
+			Stream: <code><?=$self;?>?id=<b>dQw4w9WgXcQ</b></code>
+		</p>
+		<hr />
+		<p>
+			php-ytstream: Live transcoding of youtube videos into MP3<br />
+			Copyright (C) 2022  Kevin Gut
+		</p>
+		<p>
+			This program is free software: you can redistribute it and/or modify
+			it under the terms of the GNU Affero General Public License as published by
+			the Free Software Foundation, either version 3 of the License, or
+			(at your option) any later version.
+		</p>
+	</body>
+</html>
