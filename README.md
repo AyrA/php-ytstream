@@ -289,3 +289,4 @@ Additional features that may or may not be included
 - Support for multiple ids in a single request (creating a concatenated output)
 - Randomization of ids if multiple are provided
 - Find a way to make it detect broken downloads which leave the cached file only partially complete
+- Stream the MP3 with metadata
