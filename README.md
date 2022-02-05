@@ -66,18 +66,18 @@ There's not really any reason to increase this since youtube audio is already co
 
 The following `config.php` configuration values are known:
 
-*Unless otherwise stated, ythey're mandatory. Use the example file to get started.*
+*Unless otherwise stated, they're mandatory. Use config.example.php to get started.*
 
 ## FFMPEG
 
-The Path and file name to the ffmpeg executable
+The path and file name to the ffmpeg executable
 
 - Type: string
 - Default: No default
 
 ## YTDL
 
-The Path and file name to the youtube-dl executable
+The path and file name to the youtube-dl executable
 
 - Type: string
 - Default: No default
@@ -112,7 +112,7 @@ Set the SBlock API server address
 
 ## SB_CACHE_LIFETIME
 
-How long to keep successful SBlock answers in the cache.
+How long to keep successful SBlock answers in the cache (in seconds).
 Note: The API will always be queried if no ranges were found.
 
 - Type: number
@@ -166,32 +166,56 @@ Example: Hypnodancer by little big (YT id: RhMYBfF7-hE)
 
 ### 3. Use ffmpeg to convert the stream to mp3
 
-The inut is the URL obtained in the first step and stdout is used as output.
+The input is the URL obtained in the first step and stdout is used as output.
 
 Note: ffmpeg runs as fast as it can convert but this is usually not an issue.
 The output stream will choke eventually when the client won't pull the data fast enough.
+There is an ffmpeg argument to make it transcode at live stream speed,
+but this will create problems if the next step cuts a lot of data.
 
-Note: This step is skipped if an MP3 exists already in the cache.
+Note: This step is skipped if an MP3 exists in the cache already.
 
 ### 4. Cut the MP3
 
 This step strips audio frames inside of blockable ranges obtained in step 2 above.
 
+The result is sent to the client. At the sime time, the uncut version is saved to the cache.
+
+## About MP3
+
 MP3 is notoriously primitive, which is not surprising considering how old it is.
-Calculating the length of audio frames does not require decoding the audio data.
+
+The format consists of frames, which themselves are made up of 4 byte header,
+followed by audio data that's a few milliseconds in length.
+
+In other words, it's `header+audio+header+audio+header+audio+...`.
+
+The format has a few properties that make it interesting for streaming purposes:
+
+- It's a well known format that's supported by about every device that can play compressed audio
+- Individual "header + audio" sections can be dropped without having to alter other sections
+- There is no global header or footer in the file
+- Calculating the length of audio frames does not require decoding the audio data
+
 The downside is that an MP3 file can contain non-mp3 data which decoders have to deal with.
+
+### MP3 Header
+
+*This only documents the part of the header we're interested in*
 
 The MP3 header consists of only 4 bytes.
 It starts with the first 12 bits set, so the first two bytes are `FF-F?`.
 An MP3 decoder will read until these bytes are encountered, discarding everything else.
-The remaining 4 bits determine the mpeg type (mpeg version 1, 2, 2.5),
-the layer type (layer 1, 2, 3), and if CRC is in use.
+The remaining 4 bits determine the mpeg version (1, 2, 2.5),
+the layer type (1, 2, 3), and if CRC is in use.
 
-php-ytstream only deals with mpeg 1 layer 3 files (this is the most common type).
+Note: Mpeg 2.5 has only 11 bits set because the 12th is used as part of the mpeg version bitfield.
+
+php-ytstream only deals with mpeg 1 layer 3 files which is the most common type.
 This means that the first 15 bits are always the same,
-only the CRC bit differs, meaning only the sequences `FF-FA` and `FF-FB` are valid headers.
+only the last bit (CRC bit) differs, meaning only the sequences `FF-FA` and `FF-FB` are accepted header starts.
 
-A few bit combinations inside of the remaining two bytes are considered invalid.
+A few bit combinations inside of the remaining two bytes are considered invalid too.
 For example, one frequency slot and two bitrate slots are not used.
 If bits are set to these slots, php-ytstream will discard the header and look for the next.
 
@@ -213,26 +237,55 @@ Because these values are read from the header,
 you can change the quality parameters of the ffmpeg invocation at any time.
 You can even tell ffmpeg to output VBR data.
 
+### Calculating Duration
+
 An audio frame in version 1 layer 3 contains 1152 samples of audio.
 The total time of audio material in a frame depends on the frequency and not the bitrate.
-The duration is almost always around 26 ms because that's what you get for 44.1kHz which is most commonly used.
-Time in ms is `1152/samplerate*1000`
+The duration is almost always around 26 ms because that's what you get for 44'100 Hz which is most commonly used.
+Time in ms is `1152/sampleRateInHertz*1000`
 
-Contrary to some other formats, stereo doesn't takes more space than mono.
-Each channel just gets less bitrate.
-
-With these values, php-ytstream can calculate exactly how far into the MP3 stream it is.
+With this value, php-ytstream can calculate exactly how far into the MP3 stream it is.
 The cutting stage will read each MP3 frame, and if inside of a blockable range, silently discard it.
 If outside of a blockable range, it's sent to the client.
 
 Note: All frames are stored in the local cached copy regardless of the ranges,
 meaning the local MP3 copy is always the full video.
 
+### Calculating Audio Bytes
+
+Calculating the audio data length is necessary to accurately cut entire frames.
+Contrary to some other formats, stereo doesn't takes more space than mono.
+Each channel just gets less bitrate.
+
+As explained in the previous chapter,
+every frame has a constant size for a given frequency.
+This means that more or less bytes of data are in a frame, depending on the bitrate.
+
+The length is calculated as follows:
+
+1. Take the samples per frame (1152) and multiply by the bitrate (in bps, not kbps)
+2. Divide by the sample rate (in Hz, not kHz) to get the total bits of data
+3. Divide the result by 8 to convert from bits to bytes
+4. Subtract 4 for the header we've already read
+5. Add 1 if the padding bit is set
+6. Add 2 if the protection bit is **unset**
+
+The final result will not be an integer. Decimals are cut off.
+Because decimals are cut off, an MP3 frame is technically a few bits too short.
+To compensate for this, the padding bit can be set to get 8 bits back again.
+
+Notes:
+
+The padding bit contains audio data.
+The protection is placed directly after the header
+and is a CRC16 of the audio data. php-ytstream doesn't validates the checksum.
+The checksum is almost never present.
+
 # Todo
 
 Additional features that may or may not be included
 
 - Support for playlists
-- Support for multiple ids in a single request (creating a concatenated file)
+- Support for multiple ids in a single request (creating a concatenated output)
 - Randomization of ids if multiple are provided
 - Find a way to make it detect broken downloads which leave the cached file only partially complete
