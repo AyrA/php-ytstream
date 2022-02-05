@@ -39,7 +39,7 @@ https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License
 
 ### License Notes
 
-The license no logner apply to you if you:
+The license no logner applies to you if you:
 
 - set `SB_ENABLE` to `FALSE`
 - set `SB_API` to a server with a different license
