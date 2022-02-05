@@ -234,8 +234,8 @@ Data that is calculated from these values:
 - Number of bytes of audio in this block
 
 Because these values are read from the header,
-you can change the quality parameters of the ffmpeg invocation at any time.
-You can even tell ffmpeg to output VBR data.
+you can change the quality parameters of the ffmpeg invocation at any time
+or tell ffmpeg to output VBR data without having to change the MP3 cutting function.
 
 ### Calculating Duration
 
@@ -249,7 +249,7 @@ The cutting stage will read each MP3 frame, and if inside of a blockable range, 
 If outside of a blockable range, it's sent to the client.
 
 Note: All frames are stored in the local cached copy regardless of the ranges,
-meaning the local MP3 copy is always the full video.
+meaning the local MP3 copy is always the full unaltered audio track minus any invalid frames.
 
 ### Calculating Audio Bytes
 
@@ -257,14 +257,10 @@ Calculating the audio data length is necessary to accurately cut entire frames.
 Contrary to some other formats, stereo doesn't takes more space than mono.
 Each channel just gets less bitrate.
 
-As explained in the previous chapter,
-every frame has a constant size for a given frequency.
-This means that more or less bytes of data are in a frame, depending on the bitrate.
-
 The length is calculated as follows:
 
 1. Take the samples per frame (1152) and multiply by the bitrate (in bps, not kbps)
-2. Divide by the sample rate (in Hz, not kHz) to get the total bits of data
+2. Divide the result by the sample rate (in Hz, not kHz) to get the total bits of data
 3. Divide the result by 8 to convert from bits to bytes
 4. Subtract 4 for the header we've already read
 5. Add 1 if the padding bit is set
@@ -272,7 +268,7 @@ The length is calculated as follows:
 
 The final result will not be an integer. Decimals are cut off.
 Because decimals are cut off, an MP3 frame is technically a few bits too short.
-To compensate for this, the padding bit can be set to get 8 bits back again.
+To compensate for this, the padding bit can be set to get 8 bits back at once.
 
 Notes:
 
