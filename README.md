@@ -1,7 +1,17 @@
 # PHP Youtube Stream Library
 
 php-ytstream: A PHP application that transcodes the audio of youtube videos for webradio devices.
-Requires only very minimal setup
+Requires only very minimal setup.
+
+## Notable Features
+
+- The audio stream is delivered while being downloaded. No need to wait for it to finish on the server.
+- Sends additional HTTP headers that allow streaming on DLNA devices.
+- Deals with `HEAD` requests to further accelerate the start of the stream.
+- Once streamed, the stream stays available, even if the original video is deleted.
+- Removal of non-music sections using SponsorBlock
+
+*Cache and SBlock can be disabled in the configuration*
 
 ## Setup
 
@@ -22,12 +32,12 @@ Please install these dependencies and properly configure their paths in your con
 This application (provided you enable it) makes use of SponsorBlock (SBlock)
 to cut non-music sections from music videos.
 
-SBlock operates on a custom license that reauires attribution.
+SBlock operates on a custom license that requires attribution.
 See here for details:
 
 https://github.com/ajayyy/SponsorBlock/wiki/Database-and-API-License
 
-### License notes
+### License Notes
 
 The license no logner apply to you if you:
 
@@ -50,7 +60,7 @@ because it takes time to obtain the stream URL.
 ## Quality
 
 The MP3 streaming quality is 192 kbps using 44.1 kHz Joint Stereo.
-There's not really any reason to increase this since youtube audio is already compressed.
+There's not really any reason to increase this since youtube audio is already compressed a lot.
 
 ## Configuration
 
@@ -114,3 +124,12 @@ Enables debug logging to `debug.log` (same directory where index.php is located 
 
 - Type: bool
 - Default: FALSE
+
+# Todo
+
+Additional features that may or may not be included
+
+- Support for playlists
+- Support for multiple ids in a single request (creating a concatenated file)
+- Randomization of ids if multiple are provided
+- Find a way to make it detect broken downloads which leave the cached file only partially complete
