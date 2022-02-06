@@ -8,17 +8,21 @@ Requires only very minimal setup.
 - The audio stream is delivered while being downloaded. No need to wait for it to finish on the server.
 - Sends additional HTTP headers that allow streaming on DLNA devices.
 - Deals with `HEAD` requests to further accelerate the start of the stream.
+- Concatenate multiple ids into a single stream.
 - Once streamed, the stream stays available, even if the original video is deleted.
-- Removal of non-music sections using SponsorBlock
+- Removal of non-music sections using SponsorBlock.
 
 *Cache and SBlock can be disabled in the configuration*
 
 ## Setup
 
-1. Put all PHP files into a directory on your webserver
-2. Rename `config.example.php` into `config.php`
-3. Edit `config.php` to match your setup
-4. Access `index.php?id=dQw4w9WgXcQ` to test your installation
+1. Download dependencies (see chapter below)
+2. Put all PHP files into a directory on your webserver
+3. Rename `config.example.php` into `config.php`
+4. Edit `config.php` to match your setup
+5. Access `index.php?id=dQw4w9WgXcQ` to test your installation
+
+Just accessing `index.php` without any arguments displays a short help.
 
 ## Dependencies
 
@@ -26,6 +30,36 @@ Requires only very minimal setup.
 - [ffmpeg](https://ffmpeg.org/)
 
 Please install these dependencies and properly configure their paths in your configuration file.
+Both should be available for pretty much every operating system (Windows, Linux, Mac)
+
+## Usage
+
+This file takes multiple parameters in the URL:
+
+### id
+
+This parameter is used to supply the video Ids.
+Multiple videos Ids can be specified at once using a comma to separate them.
+Ids can occur multiple times to play the specific video multiple times.
+
+Example: `id=dQw4w9WgXcQ,dQw4w9WgXcQ,hJresi7z_YM,dQw4w9WgXcQ`
+
+This plays the first video twice, then a different video, then the first video again.
+
+### rnd
+
+Setting this parameter to `y` makes php-ytstream randomize the supplied video id list before streaming it.
+Any other value is treated as this parameter being absent.
+
+Example: `id=dQw4w9WgXcQ,hJresi7z_YM&rnd=1`
+
+This plays the two supplied video Ids in random order.
+
+Note: Randomization doesn't forces every supplied id to switch places.
+There's a chance that an id will remain at its original position.
+This is most notable when you use only 2 ids as done so in the example.
+There's a 50% chance that the two ids will not be swapped.
+If it's instrumental to you that the ids are swapped, randomize them yourself.
 
 ## SponsorBlock
 
@@ -282,7 +316,5 @@ The checksum is almost never present.
 Additional features that may or may not be included
 
 - Support for playlists
-- Support for multiple ids in a single request (creating a concatenated output)
-- Randomization of ids if multiple are provided
 - Find a way to make it detect broken downloads which leave the cached file only partially complete
 - Stream the MP3 with metadata

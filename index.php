@@ -58,8 +58,9 @@
 			if($fp=fopen($mp3,'rb')){
 				strip($fp,$outputStream,NULL,$ranges);
 				fclose($fp);
+				return TRUE;
 			}
-			http500("Cannot open $mp3");
+			return FALSE;
 		}
 		elseif(!USE_CACHE){
 			$cache=NULL;
@@ -69,18 +70,22 @@
 			if($proc=popen($exec,'rb')){
 				strip($proc,$outputStream,$cache,$ranges);
 				pclose($proc);
-				die(0);
+				return TRUE;
 			}
-			http500("Failed to start $exec");
+			return FALSE;
 		}
-		http500("Failed to write to $mp3");
+		return FALSE;
 	}
 
 	//Sends DLNA headers for MP3 streaming
 	function setAudioHeader(){
-		header('Content-Type: audio/mpeg');
-		header('transferMode.dlna.org: Streaming');
-		header('contentFeatures.dlna.org: DLNA.ORG_PN=MP3;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000');
+		if(!headers_sent()){
+			header('Content-Type: audio/mpeg');
+			header('transferMode.dlna.org: Streaming');
+			header('contentFeatures.dlna.org: DLNA.ORG_PN=MP3;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000');
+			return TRUE;
+		}
+		return FALSE;
 	}
 
 	//Obtains a video as MP3, downloads it, cuts it and outputs it.
@@ -95,18 +100,16 @@
 					if(!is_array($segments)){
 						$segments=array();
 					}
-					setAudioHeader();
 					strip($fp,$out,NULL,$segments);
-					die(0);
+					return TRUE;
 				}
-				http500('Failed to open STDOUT');
 			}
-			http500("Failed to read $mp3");
+			return FALSE;
 		}
 
 		$stream=getStreamUrl($videourl);
 		if(!$stream){
-			http500('Failed to load youtube video. Check if Id is correct and video is unrestricted.');
+			return FALSE;
 		}
 		debuglog("Got stream URL for id=$id");
 		$segments=getRanges($id);
@@ -116,38 +119,50 @@
 		}
 		debuglog("id=$id has " . count($segments) . ' SBlock ranges');
 		if($out=fopen('php://output','wb')){
-			setAudioHeader();
 			pipeAudio($stream,$out,$id,$segments);
 			fclose($out);
-			die(0);
+			return TRUE;
 		}
-		http500('Failed to open STDOUT');
+		return FALSE;
 	}
 
-	//Grab request properties we need
-	$id=av($_GET,'id');
-	$httpMethod=strtoupper(av($_SERVER,'REQUEST_METHOD'));
-
-	if(isYtId($id)){
+	function streamFiles($ids){
+		$httpMethod=strtoupper(av($_SERVER,'REQUEST_METHOD'));
 		//Avoid the expensive processing steps for HEAD requests
 		//and just send the appropriate headers instead.
 		if($httpMethod==='HEAD'){
 			debuglog("HEAD id=$id");
 			setAudioHeader();
-			die(0);
 		}
 		else if($httpMethod!=='GET'){
 			http400('This supports only GET');
 		}
+		else{
+			setAudioHeader();
+			if(av($_GET,'rnd')==='y'){
+				shuffle($ids);
+			}
+			foreach($ids as $id){
+				debuglog("GET id=$id");
+				getAndCut($id);
+			}
+		}
+	}
 
-		debuglog("GET id=$id");
-		getAndCut($id);
-		//It should not be possible to get to here
-		http500();
+	//Grab id list and split into ids
+	$ids=av($_GET,'id');
+	//Support multiple ids
+	if(strlen($ids)>0){
+		$ids=explode(',',$ids);
+		foreach($ids as $id){
+			if(!isYtId($id)){
+				http400("Invalid youtube Id format for $id");
+			}
+		}
+		streamFiles($ids);
+		die(0);
 	}
-	elseif($id){
-		http400('Invalid youtube Id format');
-	}
+
 	//If we're here, no parameter has been specified and we render a simple web page
 
 	//Set charset
@@ -204,10 +219,23 @@
 			YT: <code>https://www.youtube.com/watch?v=<b>dQw4w9WgXcQ</b></code><br />
 			Stream: <code><?=$self;?>?id=<b>dQw4w9WgXcQ</b></code>
 		</p>
+		<p>
+			You can supply multiple ids (including duplicates) using commas.<br />
+			Example: <code>?id=<b>dQw4w9WgXcQ,dQw4w9WgXcQ,hJresi7z_YM,dQw4w9WgXcQ</b></code><br />
+			This will play a video twice, then another one, then the first one again.
+			The source files will be concatenated into a single continuous MP3 stream.<br />
+			Note: Depending on how big your cache is
+			you may experience a short interruption if youtube is slow to answer.
+			A 5 second cache is usually sufficient.
+		</p>
+		<p>
+			Randomized play. Adding <code>&amp;rnd=y</code> to the URL will shuffle the id list.
+			For obvious reasons, this has no effect if only one id is supplied.
+		</p>
 		<hr />
 		<p>
 			php-ytstream: Live transcoding of youtube videos into MP3<br />
-			Copyright (C) 2022  Kevin Gut
+			Copyright (C) 2022 Kevin Gut
 		</p>
 		<p>
 			This program is free software: you can redistribute it and/or modify
